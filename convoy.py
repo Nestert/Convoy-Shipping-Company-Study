@@ -1,8 +1,11 @@
+import xml.etree.ElementTree
+
 import pandas as pd
 from os import path
 import re
 import sqlite3
 import json
+from lxml import etree
 
 
 def xlsx_to_csv(name_file):
@@ -111,21 +114,55 @@ def create_json(name_file):
         print(str(len(small_xui)) + ' vehicles were saved into ' + name_two)
 
 
+def create_xml(name_file):
+    name_two = name_file.replace('.s3db', '.xml')
+
+    conn = sqlite3.connect(name_file)
+    cursor = conn.cursor()
+    cursor.execute("""SELECT * FROM convoy""")
+    data = cursor.fetchall()
+    header_data = list(map(lambda x: x[0], cursor.description))
+    small_xui = ['<convoy>']
+    count = 0
+    for i in range(len(data)):
+        small_xui.append('<vehicle>')
+        for index, item in enumerate(data[i]):
+            small_xui.append('<{}>'.format(header_data[index]) + str(item) + '</{}>'.format(header_data[index]))
+        small_xui.append('</vehicle>')
+        count += 1
+    small_xui.append('</convoy>')
+
+    big_xui = ''.join(small_xui)
+
+    with open(name_two, "w") as xml_file:
+        root = etree.fromstring(big_xui)
+        tree = etree.tostring(root, pretty_print=True)
+        xml_file.write(tree.decode('utf-8'))
+
+    if count == 1:
+        print(str(count) + ' vehicle was saved into ' + name_two)
+    else:
+        print(str(count) + ' vehicles were saved into ' + name_two)
+
 def pick_option(option):
     if '.s3db' in option:
         create_json(option)
-    if '[CHECKED].csv' in option:
+        create_xml(option)
+    elif '[CHECKED].csv' in option:
         sql_name = create_insert_sql_date(option)
         create_json(sql_name)
+        create_xml(sql_name)
     elif '.csv' in option:
         checked_file = corrected_csv(option)
         sql_name = create_insert_sql_date(checked_file)
         create_json(sql_name)
+        create_xml(sql_name)
     elif '.xlsx' in option:
         csv_file = xlsx_to_csv(option)
         checked_file = corrected_csv(csv_file)
         sql_name = create_insert_sql_date(checked_file)
         create_json(sql_name)
+        create_xml(sql_name)
 
 
 print('Input file name')
