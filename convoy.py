@@ -2,6 +2,7 @@ import pandas as pd
 from os import path
 import re
 import sqlite3
+import json
 
 
 def xlsx_to_csv(name_file):
@@ -82,16 +83,49 @@ maximum_load INT NOT NULL)""")
     else:
         print(str(count) + ' records were inserted into ' + name_two)
 
+    return name_two
+
+
+def create_json(name_file):
+    name_two = name_file.replace('.s3db', '.json')
+
+    conn = sqlite3.connect(name_file)
+    cursor = conn.cursor()
+    cursor.execute("""SELECT * FROM convoy""")
+    data = cursor.fetchall()
+    header_data = list(map(lambda x: x[0], cursor.description))
+    small_xui = []
+    for i in range(len(data)):
+        xui_dict = {}
+        for index, item in enumerate(data[i]):
+            xui_dict[header_data[index]] = item
+        small_xui.append(xui_dict)
+
+    big_xui = {'convoy': small_xui}
+    with open(name_two, "w") as json_file:
+        json.dump(big_xui, json_file)
+
+    if len(small_xui) == 1:
+        print(str(len(small_xui)) + ' vehicle was saved into ' + name_two)
+    else:
+        print(str(len(small_xui)) + ' vehicles were saved into ' + name_two)
+
+
 def pick_option(option):
+    if '.s3db' in option:
+        create_json(option)
     if '[CHECKED].csv' in option:
-        create_insert_sql_date(option)
+        sql_name = create_insert_sql_date(option)
+        create_json(sql_name)
     elif '.csv' in option:
         checked_file = corrected_csv(option)
-        create_insert_sql_date(checked_file)
+        sql_name = create_insert_sql_date(checked_file)
+        create_json(sql_name)
     elif '.xlsx' in option:
         csv_file = xlsx_to_csv(option)
         checked_file = corrected_csv(csv_file)
-        create_insert_sql_date(checked_file)
+        sql_name = create_insert_sql_date(checked_file)
+        create_json(sql_name)
 
 
 print('Input file name')
