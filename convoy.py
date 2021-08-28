@@ -31,7 +31,6 @@ def corrected_csv(name_file):
     data = pd.read_csv(name_file, delimiter=',', dtype='str')
     colums_tuple = tuple(data.columns)
     count = 0
-
     def regex_counter(value):
         regex = re.compile('[^0-9]')
         initial_value = value
@@ -44,7 +43,7 @@ def corrected_csv(name_file):
     for col in colums_tuple:
         data[col] = data[col].apply(lambda x: regex_counter(x))
 
-    data.to_csv(name_two, index=None, header=True)  # maybe correct mode='a'
+    data.to_csv(name_two, index=None, header=True)
 
     if count == 1:
         print(str(count) + ' cell was corrected in ' + name_two)
@@ -55,6 +54,21 @@ def corrected_csv(name_file):
 
 
 def create_insert_sql_date(name_file):
+    def count_score(engine_capacity, fuel_consumption, maximum_load):
+        score = 0
+        avg_route = 4.5
+        fuel_used = avg_route * fuel_consumption
+        if maximum_load >= 20:
+            score += 2
+        if fuel_used <= 230:
+            score += 2
+        else:
+            score += 1
+        if fuel_used // engine_capacity == 1:
+            score += 1
+        elif fuel_used // engine_capacity == 0:
+            score += 2
+        return score
     name_two = name_file.replace('[CHECKED].csv', '.s3db')
     data = pd.read_csv(name_file)
     df = pd.DataFrame(data, dtype='str')
@@ -66,17 +80,19 @@ def create_insert_sql_date(name_file):
 (vehicle_id INT PRIMARY KEY,
 engine_capacity INT NOT NULL,
 fuel_consumption INT NOT NULL,
-maximum_load INT NOT NULL)""")
+maximum_load INT NOT NULL,
+score INT NOT NULL)""")
 
     for row in df.itertuples():
         cursor.execute('''
-                INSERT INTO convoy (vehicle_id, engine_capacity, fuel_consumption, maximum_load)
-                VALUES (?,?,?,?)
+                INSERT INTO convoy (vehicle_id, engine_capacity, fuel_consumption, maximum_load, score)
+                VALUES (?,?,?,?,?)
                 ''',
                        [row.vehicle_id,
                        row.engine_capacity,
                        row.fuel_consumption,
-                       row.maximum_load]
+                       row.maximum_load,
+                        count_score(int(row.engine_capacity), int(row.fuel_consumption), int(row.maximum_load))]
                        )
         count += 1
     conn.commit()
@@ -89,12 +105,13 @@ maximum_load INT NOT NULL)""")
     return name_two
 
 
+
+
 def create_json(name_file):
     name_two = name_file.replace('.s3db', '.json')
-
     conn = sqlite3.connect(name_file)
     cursor = conn.cursor()
-    cursor.execute("""SELECT * FROM convoy""")
+    cursor.execute("""SELECT vehicle_id,engine_capacity,fuel_consumption,maximum_load FROM convoy WHERE score>3""")
     data = cursor.fetchall()
     header_data = list(map(lambda x: x[0], cursor.description))
     small_xui = []
@@ -116,10 +133,9 @@ def create_json(name_file):
 
 def create_xml(name_file):
     name_two = name_file.replace('.s3db', '.xml')
-
     conn = sqlite3.connect(name_file)
     cursor = conn.cursor()
-    cursor.execute("""SELECT * FROM convoy""")
+    cursor.execute("""SELECT vehicle_id,engine_capacity,fuel_consumption,maximum_load FROM convoy WHERE score<=3""")
     data = cursor.fetchall()
     header_data = list(map(lambda x: x[0], cursor.description))
     small_xui = ['<convoy>']
@@ -135,9 +151,12 @@ def create_xml(name_file):
     big_xui = ''.join(small_xui)
 
     with open(name_two, "w") as xml_file:
-        root = etree.fromstring(big_xui)
-        tree = etree.tostring(root, pretty_print=True)
-        xml_file.write(tree.decode('utf-8'))
+        if big_xui == '<convoy></convoy>':
+            xml_file.write(big_xui)
+        else:
+            root = etree.fromstring(big_xui)
+            tree = etree.tostring(root, pretty_print=True)
+            xml_file.write(tree.decode('utf-8'))
 
     if count == 1:
         print(str(count) + ' vehicle was saved into ' + name_two)
